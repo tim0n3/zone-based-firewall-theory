@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MikroTik ZBF Interactive Architecture</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Chosen Palette: Warm Stone & Vibrant Cyan/Teal -->
+    <!-- Application Structure Plan: The SPA is structured into three thematic sections mapping directly to the source report: 1. Topology (Space), 2. Lifecycle (Time/Process), and 3. Logic (Rules). It uses a sticky sidebar navigation for easy jumping. Interactive elements include a hover-driven topology map to reveal connections, a click-to-reveal step-by-step packet lifecycle flow, and an interactive "packet simulator" to demonstrate the ZBF matrix logic, paired with a performance chart. This structure transforms static markdown diagrams into an exploratory learning tool. -->
+    <!-- Visualization & Content Choices: 
+         - Topology -> Goal: Relationships -> Viz: HTML/CSS Grid with interactive hover states -> Justification: Replaces static Mermaid graph with explorable DOM elements (NO SVG/Mermaid).
+         - Packet Lifecycle -> Goal: Process/Organize -> Viz: Interactive HTML/CSS Vertical Stepper -> Justification: Breaks down complex tables (RAW, MANGLE, NAT) into digestible, selectable steps.
+         - Matrix Performance -> Goal: Compare -> Viz: Chart.js Bar Chart -> Justification: Quantifies the "why" of the jump matrix. Uses strict canvas/container rules.
+         - Matrix Logic Simulation -> Goal: Process -> Viz: Interactive HTML flow with state toggling -> Justification: Allows users to physically trace packet paths through the jump rules. 
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+        .css-arrow-down {
+            width: 0; 
+            height: 0; 
+            border-left: 10px solid transparent;
+            border-right: 10px solid transparent;
+            border-top: 10px solid #d6d3d1;
+            margin: 0 auto;
+        }
+        .css-arrow-right {
+            width: 0; 
+            height: 0; 
+            border-top: 10px solid transparent;
+            border-bottom: 10px solid transparent;
+            border-left: 10px solid #d6d3d1;
+        }
+        .transition-all-fast {
+            transition: all 0.2s ease-in-out;
+        }
+        html { scroll-behavior: smooth; }
+        .sim-active {
+            background-color: #cffafe !important;
+            border-color: #06b6d4 !important;
+            transform: scale(1.02);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+        .sim-drop {
+            background-color: #fee2e2 !important;
+            border-color: #ef4444 !important;
+            color: #991b1b !important;
+        }
+        .sim-accept {
+            background-color: #dcfce7 !important;
+            border-color: #22c55e !important;
+            color: #166534 !important;
+        }
+    </style>
+</head>
+<body class="bg-[#fafaf9] text-[#44403c] font-sans antialiased selection:bg-[#0ea5e9] selection:text-white">
+
+    <div class="flex flex-col md:flex-row min-h-screen">
+        
+        <nav class="w-full md:w-64 lg:w-72 bg-[#f5f5f4] border-r border-[#e7e5e4] md:h-screen md:sticky top-0 z-50 p-6 flex flex-col shadow-sm">
+            <div class="mb-8">
+                <div class="text-4xl mb-2">🛡️</div>
+                <h1 class="text-2xl font-black text-[#1c1917] tracking-tight">MikroTik ZBF</h1>
+                <p class="text-sm text-[#78716c] mt-1">Architecture & Flow Explorer</p>
+            </div>
+            <div class="flex flex-col gap-2">
+                <a href="#topology" class="nav-link px-4 py-3 rounded-lg text-sm font-semibold text-[#57534e] hover:bg-[#e7e5e4] hover:text-[#0ea5e9] transition-all-fast bg-[#e7e5e4] text-[#0ea5e9]" data-target="topology">1. Zone Topology</a>
+                <a href="#lifecycle" class="nav-link px-4 py-3 rounded-lg text-sm font-semibold text-[#57534e] hover:bg-[#e7e5e4] hover:text-[#0ea5e9] transition-all-fast" data-target="lifecycle">2. Packet Lifecycle</a>
+                <a href="#matrix" class="nav-link px-4 py-3 rounded-lg text-sm font-semibold text-[#57534e] hover:bg-[#e7e5e4] hover:text-[#0ea5e9] transition-all-fast" data-target="matrix">3. Matrix Logic</a>
+            </div>
+            <div class="mt-auto pt-8 hidden md:block">
+                <p class="text-xs text-[#a8a29e]">Interactive SPA converting RouterOS configurations into explorable visual data.</p>
+            </div>
+        </nav>
+
+        <main class="flex-1 p-6 md:p-12 overflow-x-hidden">
+            
+            <header class="mb-16 max-w-4xl">
+                <h2 class="text-4xl md:text-5xl font-extrabold text-[#1c1917] mb-4">Zone-Based Firewall Architecture</h2>
+                <p class="text-lg md:text-xl text-[#57534e] leading-relaxed">
+                    Explore the structural, procedural, and logical pathways of a modernized MikroTik RouterOS firewall. This interactive document breaks down interface lists, packet flow tables, and the efficiency of the "Jump" matrix.
+                </p>
+            </header>
+
+            <section id="topology" class="mb-24 scroll-mt-12 max-w-5xl">
+                <div class="mb-6 border-l-4 border-[#0ea5e9] pl-4">
+                    <h3 class="text-2xl font-bold text-[#1c1917]">1. High-Level Zone Architecture</h3>
+                    <p class="text-[#57534e] mt-2">
+                        A Zone-Based Firewall groups physical and virtual interfaces into logical "Zones" (Interface Lists). Hover over the distinct zones below to understand the explicit traffic forwarding and input rules permitted by the architecture.
+                    </p>
+                </div>
+
+                <div class="bg-white p-8 rounded-2xl shadow-sm border border-[#e7e5e4] flex flex-col items-center">
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-3xl items-center relative mb-12">
+                        
+                        <div class="flex flex-col gap-4 z-10 md:col-start-1">
+                            <button class="zone-btn bg-white border-2 border-[#22c55e] text-[#166534] p-6 rounded-xl shadow-md hover:shadow-lg transition-all-fast flex flex-col items-center group w-full" data-zone="lan">
+                                <span class="text-3xl mb-2 group-hover:scale-110 transition-transform">💻</span>
+                                <span class="font-bold text-lg">LAN Zone</span>
+                                <span class="text-xs opacity-70">Local Network</span>
+                            </button>
+                        </div>
+
+                        <div class="flex justify-center z-10 md:col-start-2">
+                            <button class="zone-btn bg-[#1c1917] border-4 border-[#44403c] text-white p-8 rounded-full shadow-xl hover:shadow-2xl transition-all-fast flex flex-col items-center w-40 h-40 justify-center group" data-zone="router">
+                                <span class="text-4xl mb-1 group-hover:rotate-45 transition-transform duration-500">⚙️</span>
+                                <span class="font-extrabold text-sm text-center">MikroTik<br>Router</span>
+                            </button>
+                        </div>
+
+                        <div class="flex flex-col gap-4 z-10 md:col-start-3">
+                            <button class="zone-btn bg-white border-2 border-[#ef4444] text-[#991b1b] p-6 rounded-xl shadow-md hover:shadow-lg transition-all-fast flex flex-col items-center group w-full" data-zone="wan">
+                                <span class="text-3xl mb-2 group-hover:scale-110 transition-transform">🌍</span>
+                                <span class="font-bold text-lg">WAN Zone</span>
+                                <span class="text-xs opacity-70">Internet</span>
+                            </button>
+                            <button class="zone-btn bg-white border-2 border-[#0ea5e9] text-[#075985] p-6 rounded-xl shadow-md hover:shadow-lg transition-all-fast flex flex-col items-center group w-full" data-zone="vpn">
+                                <span class="text-3xl mb-2 group-hover:scale-110 transition-transform">🔒</span>
+                                <span class="font-bold text-lg">VPN Zone</span>
+                                <span class="text-xs opacity-70">WireGuard/Tunnels</span>
+                            </button>
+                        </div>
+
+                    </div>
+
+                    <div id="topology-info" class="w-full bg-[#f8fafc] border border-[#cbd5e1] p-6 rounded-xl min-h-[120px] flex items-center justify-center text-center">
+                        <p class="text-[#64748b] italic font-medium">Hover over or click a zone above to view its permitted flows and architectural purpose.</p>
+                    </div>
+
+                </div>
+            </section>
+
+            <section id="lifecycle" class="mb-24 scroll-mt-12 max-w-5xl">
+                <div class="mb-6 border-l-4 border-[#14b8a6] pl-4">
+                    <h3 class="text-2xl font-bold text-[#1c1917]">2. Full RouterOS Packet Flow Context</h3>
+                    <p class="text-[#57534e] mt-2">
+                        Before a packet even reaches the firewall filter rules, it traverses several subsystems. Understanding this Prerouting phase is critical for troubleshooting NAT and QoS. Click through the lifecycle steps to see how the packet is manipulated.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                    <div class="lg:col-span-2 flex flex-col gap-2">
+                        
+                        <div class="bg-[#d6d3d1] rounded-lg p-3 text-center font-bold text-[#44403c] shadow-sm uppercase tracking-wide text-sm">Ingress (e.g., WAN)</div>
+                        <div class="css-arrow-down"></div>
+                        
+                        <button class="flow-step bg-white border-2 border-[#a855f7] p-4 rounded-xl text-left hover:bg-[#faf5ff] transition-all-fast shadow-sm" data-step="raw">
+                            <div class="font-bold text-[#7e22ce] flex justify-between items-center">
+                                <span>1. RAW Table</span>
+                                <span class="text-xl">🛡️</span>
+                            </div>
+                            <div class="text-xs text-[#57534e] mt-1 font-medium">Prerouting Drop Phase</div>
+                        </button>
+                        <div class="css-arrow-down"></div>
+
+                        <button class="flow-step bg-white border-2 border-[#f59e0b] p-4 rounded-xl text-left hover:bg-[#fffbeb] transition-all-fast shadow-sm" data-step="mangle">
+                            <div class="font-bold text-[#b45309] flex justify-between items-center">
+                                <span>2. MANGLE Table</span>
+                                <span class="text-xl">🏷️</span>
+                            </div>
+                            <div class="text-xs text-[#57534e] mt-1 font-medium">Prerouting QoS Marking</div>
+                        </button>
+                        <div class="css-arrow-down"></div>
+
+                        <button class="flow-step bg-white border-2 border-[#eab308] p-4 rounded-xl text-left hover:bg-[#fefce8] transition-all-fast shadow-sm" data-step="nat">
+                            <div class="font-bold text-[#a16207] flex justify-between items-center">
+                                <span>3. NAT Table</span>
+                                <span class="text-xl">🔀</span>
+                            </div>
+                            <div class="text-xs text-[#57534e] mt-1 font-medium">Prerouting DST-NAT</div>
+                        </button>
+                        <div class="css-arrow-down"></div>
+
+                        <button class="flow-step bg-white border-2 border-[#3b82f6] p-4 rounded-xl text-left hover:bg-[#eff6ff] transition-all-fast shadow-sm" data-step="routing">
+                            <div class="font-bold text-[#1d4ed8] flex justify-between items-center">
+                                <span>4. Routing Decision</span>
+                                <span class="text-xl">🧭</span>
+                            </div>
+                            <div class="text-xs text-[#57534e] mt-1 font-medium">Input vs Forward</div>
+                        </button>
+
+                    </div>
+                    <div class="lg:col-span-3 bg-white p-8 rounded-2xl shadow-sm border border-[#e7e5e4] flex flex-col justify-center min-h-[300px]">
+                        <div id="flow-info" class="flex flex-col gap-4">
+                            <div class="text-5xl mb-2">🔍</div>
+                            <h4 class="text-2xl font-bold text-[#1c1917]">Packet Lifecycle Analysis</h4>
+                            <p class="text-[#57534e] text-lg">
+                                Select a step from the diagram on the left to explore what occurs within that specific RouterOS table according to your configuration.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="matrix" class="mb-24 scroll-mt-12 max-w-5xl">
+                <div class="mb-6 border-l-4 border-[#8b5cf6] pl-4">
+                    <h3 class="text-2xl font-bold text-[#1c1917]">3. ZBF Matrix Logic (Forward Chain)</h3>
+                    <p class="text-[#57534e] mt-2">
+                        The core of the Zone-Based Firewall is the jump matrix. Instead of evaluating 50+ rules sequentially, the router checks the connection state, jumps to a highly specific mini-chain based on the In/Out interfaces, and accepts or drops the packet rapidly.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-[#e7e5e4]">
+                        <h4 class="font-bold text-[#1c1917] mb-4 text-center">Efficiency: Linear vs ZBF Matrix</h4>
+                        <div class="chart-container">
+                            <canvas id="efficiencyChart"></canvas>
+                        </div>
+                        <p class="text-xs text-center mt-4 text-[#78716c]">Simulated: Rules evaluated for a new TCP conn from LAN to WAN.</p>
+                    </div>
+                    
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-[#e7e5e4] flex flex-col justify-center">
+                        <h4 class="font-bold text-[#1c1917] mb-4">Matrix Simulator</h4>
+                        <p class="text-sm text-[#57534e] mb-6">Trigger a packet simulation to visualize the logical path taken through the firewall filter rules.</p>
+                        
+                        <div class="flex flex-col gap-3">
+                            <button class="sim-btn bg-[#f8fafc] border border-[#cbd5e1] hover:border-[#0ea5e9] hover:bg-[#f0f9ff] text-[#334155] font-semibold py-3 px-4 rounded-lg transition-all-fast text-left flex justify-between items-center" data-sim="est">
+                                <span>Simulate: Established Connection (Any Zone)</span>
+                                <span class="text-xl">⏩</span>
+                            </button>
+                            <button class="sim-btn bg-[#f8fafc] border border-[#cbd5e1] hover:border-[#0ea5e9] hover:bg-[#f0f9ff] text-[#334155] font-semibold py-3 px-4 rounded-lg transition-all-fast text-left flex justify-between items-center" data-sim="lan-wan">
+                                <span>Simulate: New LAN to WAN (Browsing)</span>
+                                <span class="text-xl">🌐</span>
+                            </button>
+                            <button class="sim-btn bg-[#f8fafc] border border-[#cbd5e1] hover:border-[#0ea5e9] hover:bg-[#f0f9ff] text-[#334155] font-semibold py-3 px-4 rounded-lg transition-all-fast text-left flex justify-between items-center" data-sim="wan-lan-drop">
+                                <span>Simulate: New WAN to LAN (Unauthorized)</span>
+                                <span class="text-xl">🛑</span>
+                            </button>
+                            <button class="sim-btn bg-[#f8fafc] border border-[#cbd5e1] hover:border-[#0ea5e9] hover:bg-[#f0f9ff] text-[#334155] font-semibold py-3 px-4 rounded-lg transition-all-fast text-left flex justify-between items-center" data-sim="wan-lan-nat">
+                                <span>Simulate: New WAN to LAN (Port Forwarded)</span>
+                                <span class="text-xl">✅</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-8 rounded-2xl shadow-sm border border-[#e7e5e4] overflow-x-auto">
+                    <h4 class="font-bold text-[#1c1917] mb-6 border-b pb-2">Logical Flow Trace</h4>
+                    
+                    <div class="flex flex-col min-w-[700px]">
+                        
+                        <div id="sim-start" class="sim-node bg-[#f1f5f9] border-2 border-[#cbd5e1] p-4 rounded-lg text-center font-bold mb-4 w-64 mx-auto transition-all-fast">
+                            Packet Enters FORWARD Chain
+                        </div>
+
+                        <div class="css-arrow-down"></div>
+
+                        <div class="grid grid-cols-3 gap-4 mb-4">
+                            <div id="sim-est" class="sim-node bg-[#f1f5f9] border-2 border-[#cbd5e1] p-4 rounded-lg text-center transition-all-fast">
+                                <div class="font-bold text-sm">Check: Est/Rel/Untracked?</div>
+                            </div>
+                            <div id="sim-invalid" class="sim-node bg-[#f1f5f9] border-2 border-[#cbd5e1] p-4 rounded-lg text-center transition-all-fast">
+                                <div class="font-bold text-sm">Check: Invalid?</div>
+                            </div>
+                            <div id="sim-global" class="sim-node bg-[#f1f5f9] border-2 border-[#cbd5e1] p-4 rounded-lg text-center transition-all-fast">
+                                <div class="font-bold text-sm">Check: Global Blocks?</div>
+                            </div>
+                        </div>
+
+                        <div class="css-arrow-down"></div>
+
+                        <div id="sim-jump" class="sim-node bg-[#f1f5f9] border-2 border-[#cbd5e1] p-4 rounded-lg text-center font-bold mb-4 w-96 mx-auto transition-all-fast">
+                            Evaluate Jump Matrix (Interface Lists)
+                        </div>
+
+                        <div class="grid grid-cols-4 gap-2 mb-4">
+                            <div class="flex flex-col items-center">
+                                <div class="css-arrow-down"></div>
+                                <div id="sim-chain-lan-wan" class="sim-node bg-[#f1f5f9] border-2 border-[#cbd5e1] p-3 rounded-lg text-center text-sm font-bold w-full transition-all-fast">
+                                    IN: LAN ➔ OUT: WAN
+                                </div>
+                            </div>
+                            <div class="flex flex-col items-center">
+                                <div class="css-arrow-down"></div>
+                                <div id="sim-chain-lan-vpn" class="sim-node bg-[#f1f5f9] border-2 border-[#cbd5e1] p-3 rounded-lg text-center text-sm font-bold w-full transition-all-fast">
+                                    IN: LAN ➔ OUT: VPN
+                                </div>
+                            </div>
+                            <div class="flex flex-col items-center">
+                                <div class="css-arrow-down"></div>
+                                <div id="sim-chain-vpn-lan" class="sim-node bg-[#f1f5f9] border-2 border-[#cbd5e1] p-3 rounded-lg text-center text-sm font-bold w-full transition-all-fast">
+                                    IN: VPN ➔ OUT: LAN
+                                </div>
+                            </div>
+                            <div class="flex flex-col items-center">
+                                <div class="css-arrow-down"></div>
+                                <div id="sim-chain-wan-lan" class="sim-node bg-[#f1f5f9] border-2 border-[#cbd5e1] p-3 rounded-lg text-center text-sm font-bold w-full transition-all-fast">
+                                    IN: WAN ➔ OUT: LAN
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-center gap-12 mt-4 pt-4 border-t border-[#e7e5e4]">
+                            <div id="sim-result-accept" class="sim-node bg-[#f1f5f9] border-2 border-[#cbd5e1] p-4 rounded-lg text-center font-bold w-64 transition-all-fast">
+                                🎉 ACCEPT & PASS
+                            </div>
+                            <div id="sim-result-drop" class="sim-node bg-[#f1f5f9] border-2 border-[#cbd5e1] p-4 rounded-lg text-center font-bold w-64 transition-all-fast">
+                                🛑 DROP / REJECT
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </section>
+
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+
+            // --- Navigation Logic ---
+            const sections = document.querySelectorAll('section');
+            const navLinks = document.querySelectorAll('.nav-link');
+
+            const observerOptions = {
+                root: null,
+                rootMargin: '0px',
+                threshold: 0.5
+            };
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        navLinks.forEach(link => {
+                            link.classList.remove('bg-[#e7e5e4]', 'text-[#0ea5e9]');
+                            if (link.getAttribute('data-target') === entry.target.id) {
+                                link.classList.add('bg-[#e7e5e4]', 'text-[#0ea5e9]');
+                            }
+                        });
+                    }
+                });
+            }, observerOptions);
+
+            sections.forEach(sec => observer.observe(sec));
+
+
+            // --- Section 1: Topology Interaction ---
+            const topologyData = {
+                'lan': {
+                    title: 'LAN Zone (Local Network)',
+                    icon: '💻',
+                    color: 'text-[#166534]',
+                    desc: 'Fully trusted internal network. Has unrestricted egress access to WAN. Can initiate bidirectional tunnels with VPN. Has management access (DNS, DHCP, Winbox) strictly to the Router via the LAN-ROUTER input chain.'
+                },
+                'wan': {
+                    title: 'WAN Zone (Internet)',
+                    icon: '🌍',
+                    color: 'text-[#991b1b]',
+                    desc: 'Untrusted external network. Forwarding to LAN is strictly Dropped unless explicitly permitted by a pre-existing DST-NAT (Port Forward) rule in the WAN-LAN chain. Input to Router is limited to specific pings and VPN handshakes.'
+                },
+                'vpn': {
+                    title: 'VPN Zone (WireGuard)',
+                    icon: '🔒',
+                    color: 'text-[#075985]',
+                    desc: 'Trusted remote network. Has full bidirectional routing permissions to the LAN via the jump matrix. Can access Router management via the VPN-ROUTER input chain.'
+                },
+                'router': {
+                    title: 'MikroTik Router',
+                    icon: '⚙️',
+                    color: 'text-[#1c1917]',
+                    desc: 'The core processor. Traffic destined here is evaluated by the INPUT chains. The router defaults to dropping all ingress traffic unless matched by specific Zone-ROUTER jump chains.'
+                }
+            };
+
+            const topoInfoPanel = document.getElementById('topology-info');
+            const zoneBtns = document.querySelectorAll('.zone-btn');
+
+            const updateTopologyInfo = (zoneId) => {
+                if(!zoneId) return;
+                const data = topologyData[zoneId];
+                topoInfoPanel.innerHTML = `
+                    <div class="flex flex-col items-center text-center animate-fade-in">
+                        <span class="text-4xl mb-3">${data.icon}</span>
+                        <h4 class="text-xl font-bold ${data.color} mb-2">${data.title}</h4>
+                        <p class="text-[#57534e] max-w-2xl">${data.desc}</p>
+                    </div>
+                `;
+            };
+
+            zoneBtns.forEach(btn => {
+                btn.addEventListener('mouseenter', () => updateTopologyInfo(btn.dataset.zone));
+                btn.addEventListener('click', () => updateTopologyInfo(btn.dataset.zone)); // For touch devices
+            });
+
+
+            // --- Section 2: Lifecycle Interaction ---
+            const flowData = {
+                'raw': {
+                    title: '1. RAW Table',
+                    icon: '🛡️',
+                    color: 'text-[#7e22ce]',
+                    desc: '<strong>Function:</strong> Bypasses connection tracking to drop packets immediately upon ingress.<br><br><strong>Report Context:</strong> Used heavily in this setup to drop TCP port 0, bad TCP flags, and spoofed Bogon IPs arriving on the WAN. This saves significant CPU power as the router does not need to open a connection state for garbage traffic.'
+                },
+                'mangle': {
+                    title: '2. MANGLE Table',
+                    icon: '🏷️',
+                    color: 'text-[#b45309]',
+                    desc: '<strong>Function:</strong> Used to modify IP packet headers (TTL, TOS) or, more commonly, to "mark" connections and packets.<br><br><strong>Report Context:</strong> Executed right after RAW. Your configuration marks connections as <code>conn_high_qos</code>, <code>conn_bulk_qos</code>, etc., and then marks the resulting packets. This is critical for Quality of Service queues which process later.'
+                },
+                'nat': {
+                    title: '3. NAT (Destination)',
+                    icon: '🔀',
+                    color: 'text-[#a16207]',
+                    desc: '<strong>Function:</strong> Translates destination IP addresses. Port Forwarding happens here.<br><br><strong>Report Context:</strong> Evaluated in Prerouting. Your rules forward specific ports (e.g., 65000/udp to LibreNMS). <em>Crucially, the Filter Forward table evaluates traffic AFTER this NAT has occurred.</em>'
+                },
+                'routing': {
+                    title: '4. Routing Decision',
+                    icon: '🧭',
+                    color: 'text-[#1d4ed8]',
+                    desc: '<strong>Function:</strong> The kernel determines the destination of the packet based on its routing table.<br><br><strong>Report Context:</strong> If the destination IP is assigned to a router interface, it enters the <strong>INPUT</strong> filter chain. If it needs to pass through to another network (e.g., WAN to LAN), it enters the <strong>FORWARD</strong> filter chain where the ZBF Matrix lives.'
+                }
+            };
+
+            const flowInfoPanel = document.getElementById('flow-info');
+            const flowSteps = document.querySelectorAll('.flow-step');
+
+            flowSteps.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    // Reset styling
+                    flowSteps.forEach(b => b.classList.remove('ring-4', 'ring-opacity-50'));
+                    
+                    // Add active styling
+                    const colorMap = { 'raw': 'ring-[#a855f7]', 'mangle': 'ring-[#f59e0b]', 'nat': 'ring-[#eab308]', 'routing': 'ring-[#3b82f6]' };
+                    btn.classList.add('ring-4', colorMap[btn.dataset.step], 'ring-opacity-50');
+
+                    const data = flowData[btn.dataset.step];
+                    flowInfoPanel.innerHTML = `
+                        <div class="flex flex-col gap-4 animate-fade-in">
+                            <div class="flex items-center gap-3">
+                                <span class="text-4xl">${data.icon}</span>
+                                <h4 class="text-2xl font-bold ${data.color}">${data.title}</h4>
+                            </div>
+                            <p class="text-[#57534e] text-lg leading-relaxed border-t border-[#e7e5e4] pt-4">
+                                ${data.desc}
+                            </p>
+                        </div>
+                    `;
+                });
+            });
+
+
+            // --- Section 3: Chart.js Implementation ---
+            // Data Prep & Label Wrapping Logic Requirement
+            const rawLabels = [
+                "Traditional Firewall Evaluation (Linear Top-to-Bottom)",
+                "ZBF Matrix Evaluation (State Match + Targeted Jump)"
+            ];
+            
+            const processedLabels = rawLabels.map(label => {
+                if (label.length > 16) {
+                    const words = label.split(' ');
+                    const lines = [];
+                    let currentLine = '';
+                    words.forEach(word => {
+                        if ((currentLine + word).length > 16) {
+                            if (currentLine.trim() !== '') lines.push(currentLine.trim());
+                            currentLine = word + ' ';
+                        } else {
+                            currentLine += word + ' ';
+                        }
+                    });
+                    if (currentLine.trim() !== '') lines.push(currentLine.trim());
+                    return lines;
+                }
+                return label;
+            });
+
+            const ctx = document.getElementById('efficiencyChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: processedLabels,
+                    datasets: [{
+                        label: 'Rules Evaluated',
+                        data: [45, 5], // Simulated data based on typical config sizing
+                        backgroundColor: ['#ef4444', '#14b8a6'],
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y', // Horizontal bar for better label readability
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            title: { display: true, text: 'Average Rules Processed Before Action', font: {weight: 'bold'} }
+                        },
+                        y: {
+                            ticks: { font: {weight: '600'} }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        // Required Tooltip Configuration for Multi-line Labels
+                        tooltip: {
+                            callbacks: {
+                                title: function(tooltipItems) {
+                                    const item = tooltipItems[0];
+                                    let label = item.chart.data.labels[item.dataIndex];
+                                    if (Array.isArray(label)) {
+                                        return label.join(' ');
+                                    } else {
+                                        return label;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // --- Section 3: Matrix Simulator Interaction ---
+            const simNodes = document.querySelectorAll('.sim-node');
+            const simBtns = document.querySelectorAll('.sim-btn');
+
+            const resetSim = () => {
+                simNodes.forEach(node => {
+                    node.classList.remove('sim-active', 'sim-drop', 'sim-accept');
+                });
+            };
+
+            const runSequence = async (nodeIds, finalState) => {
+                resetSim();
+                for (let i = 0; i < nodeIds.length; i++) {
+                    const el = document.getElementById(nodeIds[i]);
+                    if(el) {
+                        el.classList.add('sim-active');
+                        // Add final state color to the last node
+                        if(i === nodeIds.length - 1) {
+                             el.classList.add(finalState === 'accept' ? 'sim-accept' : 'sim-drop');
+                             document.getElementById('sim-result-' + finalState).classList.add(finalState === 'accept' ? 'sim-accept' : 'sim-drop', 'sim-active');
+                        }
+                        // Async delay for visual effect
+                        await new Promise(r => setTimeout(r, 400));
+                    }
+                }
+            };
+
+            simBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const simType = btn.dataset.sim;
+                    
+                    if(simType === 'est') {
+                        runSequence(['sim-start', 'sim-est'], 'accept');
+                    } 
+                    else if (simType === 'lan-wan') {
+                        runSequence(['sim-start', 'sim-est', 'sim-invalid', 'sim-global', 'sim-jump', 'sim-chain-lan-wan'], 'accept');
+                    }
+                    else if (simType === 'wan-lan-drop') {
+                        runSequence(['sim-start', 'sim-est', 'sim-invalid', 'sim-global', 'sim-jump', 'sim-chain-wan-lan'], 'drop');
+                    }
+                    else if (simType === 'wan-lan-nat') {
+                        // ZBF logic accepts dstnat connections on wan-lan explicitly
+                        runSequence(['sim-start', 'sim-est', 'sim-invalid', 'sim-global', 'sim-jump', 'sim-chain-wan-lan'], 'accept');
+                    }
+                });
+            });
+
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,906 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MikroTik Zone-Based Firewall (ZBF) – How It Works</title>
+  <meta name="description" content="Interactive explainer for a MikroTik RouterOS Zone-Based Firewall (LAN / VPN / WAN / SafeZone) with packet-flow mapping." />
+  <style>
+    :root{
+      --bg: #0b1020;
+      --panel: rgba(255,255,255,.06);
+      --panel2: rgba(255,255,255,.08);
+      --text: rgba(255,255,255,.92);
+      --muted: rgba(255,255,255,.70);
+      --faint: rgba(255,255,255,.45);
+      --stroke: rgba(255,255,255,.14);
+      --shadow: 0 18px 55px rgba(0,0,0,.35);
+      --radius: 18px;
+
+      --lan: #3b82f6;
+      --vpn: #22c55e;
+      --wan: #f97316;
+      --safe: #a78bfa;
+
+      --allow: #22c55e;
+      --block: #ef4444;
+      --nat: #60a5fa;
+      --qos: #fbbf24;
+
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root{ --bg:#0a1020; }
+    }
+
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: var(--sans);
+      background:
+        radial-gradient(1200px 600px at 10% 10%, rgba(59,130,246,.20), transparent 60%),
+        radial-gradient(900px 600px at 90% 12%, rgba(34,197,94,.18), transparent 60%),
+        radial-gradient(900px 700px at 50% 90%, rgba(249,115,22,.14), transparent 60%),
+        linear-gradient(180deg, #080c18 0%, var(--bg) 30%, #070b16 100%);
+      color: var(--text);
+    }
+
+    a{ color: inherit; text-decoration: none; }
+    .wrap{ max-width: 1200px; margin: 0 auto; padding: 28px 18px 70px; }
+
+    header{
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      backdrop-filter: blur(12px);
+      background: linear-gradient(180deg, rgba(10,16,32,.78), rgba(10,16,32,.55));
+      border-bottom: 1px solid var(--stroke);
+    }
+
+    .nav{
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 14px 18px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 16px;
+    }
+
+    .brand{
+      display:flex; align-items:center; gap:10px;
+      font-weight: 750;
+      letter-spacing: .2px;
+    }
+
+    .badge{
+      font-size: 12px;
+      padding: 4px 10px;
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,.06);
+      border-radius: 999px;
+      color: var(--muted);
+    }
+
+    .links{
+      display:flex; gap: 10px; flex-wrap: wrap; justify-content:flex-end;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .links a{
+      padding: 8px 10px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+    }
+    .links a:hover{ border-color: var(--stroke); background: rgba(255,255,255,.05); }
+
+    .hero{
+      padding: 28px 0 18px;
+      display:grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    @media (max-width: 980px){
+      .hero{ grid-template-columns: 1fr; }
+    }
+
+    .card{
+      border: 1px solid var(--stroke);
+      background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.05));
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+
+    .hero .card{
+      padding: 18px;
+    }
+
+    h1{
+      margin: 0 0 10px;
+      font-size: clamp(26px, 3vw, 40px);
+      letter-spacing: .2px;
+      line-height: 1.08;
+    }
+
+    .sub{
+      color: var(--muted);
+      font-size: 15.5px;
+      line-height: 1.55;
+      margin: 0 0 14px;
+    }
+
+    .pillrow{ display:flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+    .pill{
+      border-radius: 999px;
+      padding: 7px 10px;
+      font-size: 12.5px;
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,.04);
+      color: var(--muted);
+      display:flex; gap: 8px; align-items:center;
+    }
+
+    .dot{ width: 9px; height: 9px; border-radius: 999px; background: #fff; opacity: .9; }
+    .dot.lan{ background: var(--lan) }
+    .dot.vpn{ background: var(--vpn) }
+    .dot.wan{ background: var(--wan) }
+    .dot.safe{ background: var(--safe) }
+
+    .actions{ display:flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+    .btn{
+      border-radius: 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,.06);
+      color: var(--text);
+      font-size: 14px;
+      cursor:pointer;
+      transition: transform .06s ease, background .2s ease, border-color .2s ease;
+      user-select:none;
+    }
+    .btn:hover{ background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.22); }
+    .btn:active{ transform: translateY(1px); }
+    .btn.primary{ background: rgba(59,130,246,.18); border-color: rgba(59,130,246,.35); }
+
+    .kpi{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 480px){ .kpi{ grid-template-columns: 1fr; } }
+
+    .kpi .mini{
+      padding: 14px;
+      border-radius: 16px;
+      background: rgba(255,255,255,.05);
+      border: 1px solid var(--stroke);
+    }
+    .mini .label{ color: var(--muted); font-size: 12px; }
+    .mini .value{ font-size: 16px; margin-top: 6px; font-weight: 700; }
+    .mini .hint{ color: var(--faint); font-size: 12px; margin-top: 6px; line-height: 1.4; }
+
+    section{ margin-top: 18px; }
+
+    .grid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+    @media (max-width: 980px){ .grid{ grid-template-columns: 1fr; } }
+
+    .card h2{
+      margin:0;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--stroke);
+      font-size: 16px;
+      letter-spacing: .2px;
+    }
+
+    .card .body{ padding: 16px; }
+
+    .legend{
+      display:flex;
+      flex-wrap:wrap;
+      gap: 10px;
+      align-items:center;
+      margin-top: 12px;
+    }
+
+    .tag{
+      display:flex; align-items:center; gap: 8px;
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,.04);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12.5px;
+      color: var(--muted);
+    }
+
+    .tag .sw{
+      width: 14px; height: 10px;
+      border-radius: 4px;
+      background: #fff;
+      opacity: .9;
+    }
+
+    .sw.allow{ background: var(--allow) }
+    .sw.block{ background: var(--block) }
+    .sw.nat{ background: var(--nat) }
+    .sw.qos{ background: var(--qos) }
+
+    .scenario{
+      display:flex;
+      flex-wrap:wrap;
+      gap: 10px;
+      align-items:center;
+      margin: 10px 0 0;
+    }
+
+    .scenario .btn{ padding: 9px 10px; border-radius: 999px; font-size: 13px; }
+    .scenario .btn.active{ background: rgba(34,197,94,.16); border-color: rgba(34,197,94,.35); }
+
+    .story{
+      margin-top: 10px;
+      padding: 12px 12px;
+      border: 1px solid var(--stroke);
+      border-radius: 14px;
+      background: rgba(255,255,255,.04);
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .mono{
+      font-family: var(--mono);
+      font-size: 12.5px;
+      line-height: 1.55;
+      color: rgba(255,255,255,.82);
+      background: rgba(0,0,0,.18);
+      border: 1px solid var(--stroke);
+      border-radius: 16px;
+      padding: 12px;
+      overflow:auto;
+    }
+
+    table{
+      width:100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
+      color: rgba(255,255,255,.86);
+    }
+    th, td{
+      text-align:left;
+      padding: 10px 10px;
+      border-bottom: 1px solid var(--stroke);
+      vertical-align: top;
+    }
+    th{ color: var(--muted); font-weight: 650; }
+
+    .ok{ color: rgba(34,197,94,.95); font-weight: 700; }
+    .no{ color: rgba(239,68,68,.95); font-weight: 700; }
+    .warn{ color: rgba(251,191,36,.95); font-weight: 700; }
+
+    /* SVG styling */
+    .svgwrap{ width:100%; overflow:hidden; }
+    svg{ width:100%; height:auto; display:block; }
+
+    .node{ fill: rgba(255,255,255,.05); stroke: rgba(255,255,255,.18); stroke-width: 1.2; }
+    .node.title{ fill: rgba(255,255,255,.07); }
+
+    .label{ fill: rgba(255,255,255,.88); font-weight: 700; font-size: 13px; }
+    .sublabel{ fill: rgba(255,255,255,.65); font-size: 11.5px; }
+
+    .lane{ stroke-width: 3.2; fill: none; opacity: .78; }
+    .lane.allow{ stroke: var(--allow); }
+    .lane.block{ stroke: var(--block); stroke-dasharray: 7 5; opacity: .85; }
+    .lane.nat{ stroke: var(--nat); stroke-dasharray: 3 6; opacity: .75; }
+    .lane.qos{ stroke: var(--qos); stroke-dasharray: 2 5; opacity: .85; }
+
+    .hi .node{ stroke: rgba(255,255,255,.45); }
+    .hi .lane{ opacity: 1; }
+
+    .dim .node, .dim .lane, .dim text{ opacity: .22; }
+
+    .glow{ filter: drop-shadow(0 8px 18px rgba(34,197,94,.22)); }
+
+    footer{
+      margin-top: 22px;
+      color: var(--faint);
+      font-size: 13px;
+      text-align:center;
+      padding: 18px 0 0;
+    }
+
+    .hr{ height:1px; background: var(--stroke); margin: 18px 0 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="nav">
+      <div class="brand">
+        <span style="display:inline-flex;align-items:center;gap:10px">
+          <span style="width:14px;height:14px;border-radius:6px;background:rgba(59,130,246,.9);box-shadow:0 0 0 4px rgba(59,130,246,.18)"></span>
+          MikroTik ZBF
+        </span>
+        <span class="badge">RouterOS 7 • Zone-based policy</span>
+      </div>
+      <div class="links">
+        <a href="#overview">Overview</a>
+        <a href="#flows">Packet flows</a>
+        <a href="#pipeline">Tables & order</a>
+        <a href="#matrix">Policy matrix</a>
+        <a href="#rules">Rule intent</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="hero" id="overview">
+      <div class="card">
+        <h1>Zone-Based Firewall, visualised</h1>
+        <p class="sub">
+          This page maps how packets move through your MikroTik firewall when using zones (interface-lists):
+          <b>LAN</b>, <b>VPN</b>, <b>WAN</b>, and a trusted <b>SafeZone</b> list. It also shows where <b>RAW</b> drops happen,
+          where <b>MANGLE</b> marks QoS, where <b>NAT</b> translates, and where <b>FILTER</b> enforces policy.
+        </p>
+
+        <div class="pillrow" aria-label="Zones">
+          <div class="pill"><span class="dot lan"></span>LAN <span class="badge">192.168.88.0/24</span></div>
+          <div class="pill"><span class="dot vpn"></span>VPN <span class="badge">10.10.0.0/24</span></div>
+          <div class="pill"><span class="dot wan"></span>WAN <span class="badge">Internet</span></div>
+          <div class="pill"><span class="dot safe"></span>SafeZone <span class="badge">trusted IP list</span></div>
+        </div>
+
+        <div class="actions">
+          <button class="btn primary" id="jumpFlows">Explore packet paths</button>
+          <button class="btn" id="jumpMatrix">See policy matrix</button>
+        </div>
+
+        <div class="hr"></div>
+        <div class="story" style="margin-top:14px">
+          <b>Rule style:</b> dispatch early by zone → apply per-zone allow/deny → default drop.
+          <span style="color:rgba(255,255,255,.65)">This makes “what is allowed” obvious, and keeps WAN exposure tight.</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 style="margin:0 0 10px">What your firewall does (at a glance)</h2>
+        <div class="kpi">
+          <div class="mini">
+            <div class="label">WAN to router</div>
+            <div class="value"><span class="ok">Allow</span> WireGuard + trusted ICMP</div>
+            <div class="hint">Everything else is dropped at INPUT.</div>
+          </div>
+          <div class="mini">
+            <div class="label">WAN to LAN</div>
+            <div class="value"><span class="warn">Allow</span> only if <span style="font-family:var(--mono)">dstnat</span></div>
+            <div class="hint">No unsolicited inbound forwarding.</div>
+          </div>
+          <div class="mini">
+            <div class="label">LAN / VPN outbound</div>
+            <div class="value"><span class="ok">Allow</span> LAN→WAN, LAN↔VPN</div>
+            <div class="hint">Plus global blocks (eg DoT/853) where desired.</div>
+          </div>
+          <div class="mini">
+            <div class="label">RAW + blocklists</div>
+            <div class="value"><span class="ok">Drop early</span> bogons/spoofs + blocklists</div>
+            <div class="hint">Cheap drops before conntrack where possible.</div>
+          </div>
+        </div>
+
+        <div class="legend" style="margin-top:14px">
+          <div class="tag"><span class="sw allow"></span>Allowed path</div>
+          <div class="tag"><span class="sw block"></span>Blocked path</div>
+          <div class="tag"><span class="sw nat"></span>NAT translation</div>
+          <div class="tag"><span class="sw qos"></span>QoS marking</div>
+        </div>
+      </div>
+    </div>
+
+    <section id="flows">
+      <div class="grid">
+        <div class="card">
+          <h2>Interactive packet path (choose a scenario)</h2>
+          <div class="body">
+            <div class="scenario" role="tablist" aria-label="Packet flow scenarios">
+              <button class="btn active" data-scn="lan_wan" role="tab">LAN → WAN (web browsing)</button>
+              <button class="btn" data-scn="vpn_lan" role="tab">VPN → LAN (access home)</button>
+              <button class="btn" data-scn="wan_router" role="tab">WAN → Router (WireGuard)</button>
+              <button class="btn" data-scn="wan_dstnat" role="tab">WAN → LAN (port-forward)</button>
+              <button class="btn" data-scn="wan_drop" role="tab">WAN → LAN (no dstnat)</button>
+              <button class="btn" data-scn="dot_block" role="tab">LAN → WAN (DoT/853 blocked)</button>
+            </div>
+
+            <div class="story" id="story">
+              <b>LAN → WAN:</b> packet enters via <b>LAN</b>, is accepted (if valid), optionally marked for QoS, then NATed (masquerade) out WAN.
+            </div>
+
+            <div class="svgwrap" style="margin-top:14px">
+              <svg viewBox="0 0 980 430" xmlns="http://www.w3.org/2000/svg" aria-label="Flow diagram">
+                <defs>
+                  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(255,255,255,.85)" />
+                  </marker>
+                  <marker id="arrowAllow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--allow)" />
+                  </marker>
+                  <marker id="arrowBlock" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--block)" />
+                  </marker>
+                  <marker id="arrowNat" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--nat)" />
+                  </marker>
+                  <marker id="arrowQos" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--qos)" />
+                  </marker>
+                </defs>
+
+                <!-- Nodes: zones -->
+                <g id="nodes">
+                  <rect class="node title" x="30" y="40" width="200" height="90" rx="16" />
+                  <text class="label" x="55" y="75">LAN</text>
+                  <text class="sublabel" x="55" y="98">192.168.88.0/24</text>
+
+                  <rect class="node title" x="30" y="160" width="200" height="90" rx="16" />
+                  <text class="label" x="55" y="195">VPN</text>
+                  <text class="sublabel" x="55" y="218">10.10.0.0/24</text>
+
+                  <rect class="node title" x="30" y="280" width="200" height="90" rx="16" />
+                  <text class="label" x="55" y="315">WAN</text>
+                  <text class="sublabel" x="55" y="338">Internet</text>
+
+                  <!-- Router -->
+                  <rect class="node" x="310" y="120" width="350" height="190" rx="18" />
+                  <text class="label" x="330" y="150">MikroTik Router</text>
+                  <text class="sublabel" x="330" y="174">Zones = interface-lists • policy by chain</text>
+
+                  <rect class="node" x="330" y="192" width="145" height="42" rx="12" />
+                  <text class="sublabel" x="346" y="218" style="font-weight:700">RAW</text>
+                  <text class="sublabel" x="387" y="218">bogons, spoof, blocklists</text>
+
+                  <rect class="node" x="485" y="192" width="145" height="42" rx="12" />
+                  <text class="sublabel" x="502" y="218" style="font-weight:700">MANGLE</text>
+                  <text class="sublabel" x="565" y="218">QoS marks</text>
+
+                  <rect class="node" x="330" y="244" width="145" height="42" rx="12" />
+                  <text class="sublabel" x="346" y="270" style="font-weight:700">NAT</text>
+                  <text class="sublabel" x="384" y="270">dstnat / srcnat</text>
+
+                  <rect class="node" x="485" y="244" width="145" height="42" rx="12" />
+                  <text class="sublabel" x="502" y="270" style="font-weight:700">FILTER</text>
+                  <text class="sublabel" x="560" y="270">INPUT / FORWARD</text>
+
+                  <!-- Destinations -->
+                  <rect class="node title" x="740" y="55" width="210" height="90" rx="16" />
+                  <text class="label" x="760" y="90">Router services</text>
+                  <text class="sublabel" x="760" y="112">Winbox/DNS/NTP/WG</text>
+
+                  <rect class="node title" x="740" y="175" width="210" height="90" rx="16" />
+                  <text class="label" x="760" y="210">LAN hosts</text>
+                  <text class="sublabel" x="760" y="232">internal services</text>
+
+                  <rect class="node title" x="740" y="295" width="210" height="90" rx="16" />
+                  <text class="label" x="760" y="330">Internet</text>
+                  <text class="sublabel" x="760" y="352">public destinations</text>
+                </g>
+
+                <!-- Base faint connectors (always visible) -->
+                <g class="dim" id="base">
+                  <path class="lane" d="M 230 85 C 280 85 275 160 310 185" stroke="rgba(255,255,255,.35)" marker-end="url(#arrow)" />
+                  <path class="lane" d="M 230 205 C 275 205 275 210 310 215" stroke="rgba(255,255,255,.35)" marker-end="url(#arrow)" />
+                  <path class="lane" d="M 230 325 C 275 325 275 260 310 245" stroke="rgba(255,255,255,.35)" marker-end="url(#arrow)" />
+
+                  <path class="lane" d="M 660 170 C 700 160 700 120 740 105" stroke="rgba(255,255,255,.35)" marker-end="url(#arrow)" />
+                  <path class="lane" d="M 660 225 C 700 230 700 220 740 225" stroke="rgba(255,255,255,.35)" marker-end="url(#arrow)" />
+                  <path class="lane" d="M 660 280 C 700 295 700 330 740 335" stroke="rgba(255,255,255,.35)" marker-end="url(#arrow)" />
+                </g>
+
+                <!-- Highlight paths (swapped per scenario) -->
+                <g id="paths"></g>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>What “zone-based” means on RouterOS</h2>
+          <div class="body">
+            <p class="sub" style="margin-top:0">
+              MikroTik doesn’t have a single “ZBF object” like some enterprise firewalls. Instead, you build it from:
+            </p>
+            <ul style="margin:0;padding-left:18px;color:var(--muted);line-height:1.6">
+              <li><b>interface-lists</b> for zones (LAN / VPN / WAN)</li>
+              <li><b>dispatcher rules</b> at the top of <span style="font-family:var(--mono)">input</span> and <span style="font-family:var(--mono)">forward</span></li>
+              <li><b>per-zone chains</b> where you describe allowed flows</li>
+              <li><b>default drop</b> at the end of each chain</li>
+            </ul>
+
+            <div class="story" style="margin-top:14px">
+              <b>Why it’s worth it:</b> when you revisit this in 6 months, you read “LAN → WAN allow” or “WAN → LAN only dstnat”
+              instead of deciphering 70 interleaved rules.
+            </div>
+
+            <div class="mono" style="margin-top:14px">
+# Mental model
+
+RAW   : cheap drops + bypass rules (before conntrack where possible)
+MANGLE: mark connections/packets (QoS)
+NAT   : dstnat (inbound) + srcnat/masquerade (outbound)
+FILTER: enforce security policy
+        - INPUT   = traffic to router itself
+        - FORWARD = traffic through the router
+
+ZBF pattern:
+  input   top: established/related → invalid drop → dispatch by zone → default drop
+  forward top: established/related → invalid drop → global blocks → dispatch by zone → default drop
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="pipeline">
+      <div class="grid">
+        <div class="card">
+          <h2>Packet processing order (simplified)</h2>
+          <div class="body">
+            <div class="svgwrap">
+              <svg viewBox="0 0 980 310" xmlns="http://www.w3.org/2000/svg" aria-label="Packet pipeline">
+                <defs>
+                  <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(255,255,255,.85)" />
+                  </marker>
+                </defs>
+
+                <rect class="node" x="40" y="60" width="190" height="70" rx="16" />
+                <text class="label" x="62" y="95">RAW</text>
+                <text class="sublabel" x="62" y="118">Prerouting (early drops)</text>
+
+                <rect class="node" x="260" y="60" width="190" height="70" rx="16" />
+                <text class="label" x="282" y="95">MANGLE</text>
+                <text class="sublabel" x="282" y="118">Prerouting (QoS marks)</text>
+
+                <rect class="node" x="480" y="60" width="190" height="70" rx="16" />
+                <text class="label" x="502" y="95">NAT</text>
+                <text class="sublabel" x="502" y="118">DstNAT happens here</text>
+
+                <rect class="node" x="700" y="60" width="240" height="70" rx="16" />
+                <text class="label" x="722" y="95">FILTER</text>
+                <text class="sublabel" x="722" y="118">Input or Forward decision</text>
+
+                <path class="lane" stroke="rgba(255,255,255,.65)" d="M 230 95 L 260 95" marker-end="url(#arr)" />
+                <path class="lane" stroke="rgba(255,255,255,.65)" d="M 450 95 L 480 95" marker-end="url(#arr)" />
+                <path class="lane" stroke="rgba(255,255,255,.65)" d="M 670 95 L 700 95" marker-end="url(#arr)" />
+
+                <!-- branches -->
+                <rect class="node" x="570" y="175" width="170" height="62" rx="14" />
+                <text class="sublabel" x="588" y="205" style="font-weight:800">INPUT</text>
+                <text class="sublabel" x="588" y="226">to router services</text>
+
+                <rect class="node" x="770" y="175" width="170" height="62" rx="14" />
+                <text class="sublabel" x="788" y="205" style="font-weight:800">FORWARD</text>
+                <text class="sublabel" x="788" y="226">through router</text>
+
+                <path class="lane" stroke="rgba(255,255,255,.55)" d="M 820 130 C 820 150 655 155 655 175" marker-end="url(#arr)" />
+                <path class="lane" stroke="rgba(255,255,255,.55)" d="M 840 130 C 855 150 860 155 855 175" marker-end="url(#arr)" />
+
+                <rect class="node" x="40" y="175" width="440" height="62" rx="14" />
+                <text class="sublabel" x="60" y="205" style="font-weight:800">Later on egress:</text>
+                <text class="sublabel" x="60" y="226">SrcNAT / masquerade typically applies after FILTER forward</text>
+              </svg>
+            </div>
+
+            <div class="story">
+              <b>Why this matters:</b> if you drop traffic in RAW, it’s cheap (often before conntrack). If you want to block
+              specific outbound protocols (like DoT on 853), doing it in FILTER forward is easy and readable.
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Where your current logic maps in this model</h2>
+          <div class="body">
+            <table>
+              <thead>
+                <tr>
+                  <th>Table/Chain</th>
+                  <th>Purpose in your config</th>
+                  <th>Examples</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><b>RAW prerouting</b></td>
+                  <td>Early WAN hardening + blocklist drops, bogons, spoofed LAN sources on WAN</td>
+                  <td>bogons, crowdsec/prod_blocklist, weird TCP flags, port 0</td>
+                </tr>
+                <tr>
+                  <td><b>MANGLE prerouting</b></td>
+                  <td>QoS marking for priority classes (high / realtime / normal / bulk)</td>
+                  <td>WireGuard/DNS/NTP high priority, bulk for torrents/streams</td>
+                </tr>
+                <tr>
+                  <td><b>NAT dstnat</b></td>
+                  <td>Port forwards and redirects (when enabled)</td>
+                  <td>SNMP / Munin forwards, optional DNS redirects</td>
+                </tr>
+                <tr>
+                  <td><b>FILTER input</b></td>
+                  <td>Protect router services (only allow from zones you trust)</td>
+                  <td>LAN DNS/NTP/DHCP, VPN management, WAN WireGuard</td>
+                </tr>
+                <tr>
+                  <td><b>FILTER forward</b></td>
+                  <td>Zone policy between networks (LAN→WAN allow; WAN→LAN only dstnat)</td>
+                  <td>DoT/853 rejects, Huawei rejects, dstnat-only inbound</td>
+                </tr>
+                <tr>
+                  <td><b>NAT srcnat</b></td>
+                  <td>Masquerade traffic leaving WAN/VPN</td>
+                  <td>LAN→WAN masquerade, VPN egress masquerade</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="matrix">
+      <div class="card">
+        <h2>Policy matrix (what is allowed)</h2>
+        <div class="body">
+          <table>
+            <thead>
+              <tr>
+                <th>From</th>
+                <th>To</th>
+                <th>Decision</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><b>LAN</b></td>
+                <td>Router</td>
+                <td class="ok">ALLOW</td>
+                <td>DHCP/DNS/NTP/CAPsMAN + Winbox only for allowed IP lists</td>
+              </tr>
+              <tr>
+                <td><b>VPN</b></td>
+                <td>Router</td>
+                <td class="ok">ALLOW</td>
+                <td>Management allowed (Winbox/SSH). Optional DNS/NTP if you enable it</td>
+              </tr>
+              <tr>
+                <td><b>WAN</b></td>
+                <td>Router</td>
+                <td class="warn">LIMITED</td>
+                <td>WireGuard handshakes + ICMP from SafeZone / specific host only</td>
+              </tr>
+              <tr>
+                <td><b>LAN</b></td>
+                <td>WAN</td>
+                <td class="ok">ALLOW</td>
+                <td>Masquerade out WAN; global blocks still apply (eg DoT if enabled)</td>
+              </tr>
+              <tr>
+                <td><b>LAN</b></td>
+                <td>VPN</td>
+                <td class="ok">ALLOW</td>
+                <td>Bidirectional with VPN→LAN rule set too</td>
+              </tr>
+              <tr>
+                <td><b>VPN</b></td>
+                <td>LAN</td>
+                <td class="ok">ALLOW</td>
+                <td>Remote access into your home network</td>
+              </tr>
+              <tr>
+                <td><b>WAN</b></td>
+                <td>LAN</td>
+                <td class="warn">ALLOW ONLY IF DSTNAT</td>
+                <td>Only for deliberate port-forwards; everything else dropped</td>
+              </tr>
+              <tr>
+                <td><b>WAN</b></td>
+                <td>LAN</td>
+                <td class="no">DENY</td>
+                <td>Default case: no dstnat → drop</td>
+              </tr>
+              <tr>
+                <td><b>LAN</b></td>
+                <td>WAN (DoT/853)</td>
+                <td class="no">DENY</td>
+                <td>Explicit block/reject of DNS-over-TLS on port 853</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="rules">
+      <div class="grid">
+        <div class="card">
+          <h2>Dispatcher pattern (human-readable intent)</h2>
+          <div class="body">
+            <div class="mono"># INPUT (to router)
+
+accept established,related,untracked
+drop invalid
+
+if in-interface-list=LAN   jump zbf-in-lan
+if in-interface-list=VPN   jump zbf-in-vpn
+if in-interface-list=WAN   jump zbf-in-wan
+
+drop (default)
+
+# FORWARD (through router)
+
+accept established,related,untracked
+drop invalid
+apply global blocks (eg DoT/853)
+
+if in-interface-list=LAN   jump zbf-fwd-lan
+if in-interface-list=VPN   jump zbf-fwd-vpn
+if in-interface-list=WAN   jump zbf-fwd-wan
+
+drop (default)
+            </div>
+
+            <div class="story">
+              <b>Tip:</b> Put your “global rejects” (eg DoT, known-bad devices) above the zone dispatchers so they apply consistently.
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>How to extend this to more zones (IoT / Guest / Servers)</h2>
+          <div class="body">
+            <p class="sub" style="margin-top:0">
+              Add more interface-lists, then add a forward chain per zone (and optionally an input chain too).
+              The page structure stays identical.
+            </p>
+            <div class="mono"># Example new zones
+/interface list
+add name=IOT
+add name=GUEST
+add name=SERVERS
+
+# Put VLAN L3 interfaces into the right zone lists
+/interface list member
+add list=IOT interface=bridge.20
+add list=GUEST interface=bridge.30
+add list=SERVERS interface=bridge.40
+
+# Then create per-zone chains:
+# zbf-fwd-iot, zbf-fwd-guest, zbf-fwd-servers
+# and add dispatchers near the top of FORWARD.
+
+# Example policy:
+# - Guest -> WAN only
+# - IoT -> WAN + DNS/NTP only, block IoT->LAN
+# - Servers -> LAN allowed, but restrict Server->WAN to updates only
+            </div>
+
+            <div class="story">
+              If you want, we can generate a full multi-zone matrix from your actual VLANs and host lists.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      Built as a single-file HTML explainer (easy to host anywhere). If you want, I can convert this into a proper multi-page site with downloadable assets.
+    </footer>
+  </main>
+
+  <script>
+    const story = document.getElementById('story');
+    const paths = document.getElementById('paths');
+
+    const scenarios = {
+      lan_wan: {
+        title: 'LAN → WAN (web browsing)',
+        text: '<b>LAN → WAN:</b> packet enters via <b>LAN</b> → RAW accepts (if not bogon/blacklisted) → MANGLE may mark QoS → FILTER forward allows LAN→WAN → NAT masquerades out WAN.',
+        draw: () => [
+          lane('M 230 85 C 280 85 275 160 310 185', 'allow', 'arrowAllow'),
+          lane('M 450 215 L 485 215', 'qos', 'arrowQos'),
+          lane('M 405 244 L 405 232', 'qos', 'arrowQos', 0),
+          lane('M 475 265 L 485 265', 'nat', 'arrowNat'),
+          lane('M 660 280 C 700 295 700 330 740 335', 'nat', 'arrowNat'),
+          lane('M 660 280 C 700 295 700 330 740 335', 'allow', 'arrowAllow')
+        ]
+      },
+      vpn_lan: {
+        title: 'VPN → LAN (access home)',
+        text: '<b>VPN → LAN:</b> packet enters via <b>VPN</b> → RAW accepts (bypass/allow for VPN nets) → MANGLE may mark → FILTER forward allows VPN→LAN → no NAT needed for internal access.',
+        draw: () => [
+          lane('M 230 205 C 275 205 275 210 310 215', 'allow', 'arrowAllow'),
+          lane('M 660 225 C 700 230 700 220 740 225', 'allow', 'arrowAllow'),
+          lane('M 510 215 L 560 215', 'qos', 'arrowQos')
+        ]
+      },
+      wan_router: {
+        title: 'WAN → Router (WireGuard)',
+        text: '<b>WAN → Router:</b> WireGuard handshake hits WAN → RAW drops bogons/spoofs/blacklist early → FILTER input allows only WG UDP ports (and limited ICMP from SafeZone) → router terminates the tunnel.',
+        draw: () => [
+          lane('M 230 325 C 275 325 275 260 310 245', 'allow', 'arrowAllow'),
+          lane('M 660 170 C 700 160 700 120 740 105', 'allow', 'arrowAllow')
+        ]
+      },
+      wan_dstnat: {
+        title: 'WAN → LAN (port-forward)',
+        text: '<b>WAN → LAN (dstnat):</b> inbound hits WAN → NAT dstnat rewrites destination to an internal host → FILTER forward allows it only because <span style="font-family:var(--mono)">connection-nat-state=dstnat</span> → traffic reaches LAN host.',
+        draw: () => [
+          lane('M 230 325 C 275 325 275 260 310 245', 'allow', 'arrowAllow'),
+          lane('M 475 265 C 590 265 650 235 740 225', 'nat', 'arrowNat'),
+          lane('M 660 225 C 700 230 700 220 740 225', 'allow', 'arrowAllow')
+        ]
+      },
+      wan_drop: {
+        title: 'WAN → LAN (no dstnat)',
+        text: '<b>WAN → LAN (no dstnat):</b> inbound hits WAN → no matching dstnat → FILTER forward sees WAN→LAN without dstnat and drops by default. This is your “no unsolicited inbound” posture.',
+        draw: () => [
+          lane('M 230 325 C 275 325 275 260 310 245', 'allow', 'arrowAllow'),
+          lane('M 660 225 C 700 230 700 220 740 225', 'block', 'arrowBlock')
+        ]
+      },
+      dot_block: {
+        title: 'LAN → WAN (DoT/853 blocked)',
+        text: '<b>LAN → WAN (DoT blocked):</b> client tries to use DNS-over-TLS (tcp/udp 853). FILTER forward hits the explicit 853 reject, so the flow fails fast even though LAN→WAN is generally allowed.',
+        draw: () => [
+          lane('M 230 85 C 280 85 275 160 310 185', 'allow', 'arrowAllow'),
+          lane('M 660 280 C 700 295 700 330 740 335', 'block', 'arrowBlock'),
+          lane('M 520 270 L 560 270', 'block', 'arrowBlock')
+        ]
+      }
+    };
+
+    function lane(d, kind, marker, opacity=1){
+      const p = document.createElementNS('http://www.w3.org/2000/svg','path');
+      p.setAttribute('d', d);
+      p.setAttribute('class', `lane ${kind} glow`);
+      p.setAttribute('marker-end', `url(#${marker})`);
+      if(opacity !== 1) p.setAttribute('opacity', opacity);
+      return p;
+    }
+
+    function renderScenario(key){
+      const scn = scenarios[key];
+      if(!scn) return;
+
+      // Update UI state
+      document.querySelectorAll('[data-scn]').forEach(b => {
+        b.classList.toggle('active', b.dataset.scn === key);
+      });
+
+      story.innerHTML = scn.text;
+      paths.innerHTML = '';
+      scn.draw().forEach(el => paths.appendChild(el));
+    }
+
+    // Hooks
+    document.querySelectorAll('[data-scn]').forEach(btn => {
+      btn.addEventListener('click', () => renderScenario(btn.dataset.scn));
+    });
+
+    document.getElementById('jumpFlows').addEventListener('click', () => {
+      document.getElementById('flows').scrollIntoView({behavior:'smooth'});
+    });
+    document.getElementById('jumpMatrix').addEventListener('click', () => {
+      document.getElementById('matrix').scrollIntoView({behavior:'smooth'});
+    });
+
+    // Init
+    renderScenario('lan_wan');
+  </script>
+</body>
+</html>
